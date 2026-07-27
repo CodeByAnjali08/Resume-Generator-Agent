@@ -1,70 +1,81 @@
-# Step 1: Load Important modules
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import os
 import streamlit as st
-from sklearn.datasets import load_iris
-import pickle
+import os
+import time
+import langchain
+import langchain_community
+from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
+from tavily import TavilyClient
+import pytesseract as pyt
+import numpy as np
+from langchain.messages import SystemMessage,HumanMessage
+from langchain.agents import create_agent
+print("Done")
 
-# LOAD DATASET
-data = load_iris()
-df = pd.DataFrame(data['data'], 
-                  columns = data['feature_names'])
-df['target'] = data['target']
-classes = data['target_names']
+#=================FRONTEND==================
+st.title("AI RESUME GENERATOR")
+GOOGLE_API_KEY=st.sidebar.text_input("Google Api Key",type="password")
+GROQ_API_KEY=st.sidebar.text_input("Groq Api Key",type="password")
+TAVILY_API_KEY=st.sidebar.text_input("Tavily Api Key",type="password")
+model1=ChatGoogleGenerativeAI(
+    model="gemini-3.5-flash-lite",
+    google_api_key=GOOGLE_API_KEY
+)
+model2=ChatGroq(
+    model="qwen/qwen3.6-27b",
+    api_key=GROQ_API_KEY
+)
+#============Agent with tool=============
+agent=create_agent(
+    model=model1,
+    tools=[search_latest_news_jobs]
+)
+agent
+def prompt_generator():
+  prompt="""You are a helpful AI Resume
+  maker,I want you to use chain-of-thoughts
+  and give detailed prompt for model
+  where user want to generate resume
+  for fresher or experienced one
+  in HTML format,you have to give proper
+  set of instructions,and make sure to keep
+  design proffesional"""
+  response=model1.invoke(prompt)
+  prompt_ans=response.content[-1]['text']
+  file_name='prompt_txt'
+  with open(file_name,'w') as f:
+    f.write(prompt_ans)
+  prompt_generator()
+#Final Agent#Tool 2
+def prompt_reader():
+  with open('prompt_txt','r') as f:
+    prompt=f.read()
+  return prompt
+prompt="""I want complete Professional
+Resume with Dynamic Design using advanced CSS and JS
+and must show user input details
+System instructions:Only Give HTML code as output"""
 
-X = df.iloc[:,:-1]
+final_prompt=prompt+prompt_reader()
+user_info=st.input("give your information")
+user_photo=st.sidebar.file_uploader("upload pic",type="image/jpeg")
+user_query=f"""Give Resume for Python Developer.
+user details:{user_info}
+use user profile image from given {user_photo}"""
 
-# MODEL_LIST
-all_model_name = ['Logistic Regression',
-                 'Naive Bayes',"Decision Tree",
-                 "Random Forest","SVM",
-                 "KNN"]
+final_query=final_prompt+user_query
+if st.button("Generate Resume"):
+  with st.spinner("Agent creating Resume..."):
+    response=agent.invoke({'messages':[{'role':'user',"content":final_query}]})
+    code=response['messages'][-1].content[-1]['text']
+    st.html(code,width="stretch",unsafe_allow_javascript=True)
 
 
 
-all_models = []
-for i in all_model_name:
-    file_name = i+'.pkl'
-    with open(f"{file_name}", 'rb') as f:
-        model = pickle.load(f)
-        all_models.append(model)
 
-# USER INPUT AND PAGE TITLE
-st.title("ML Flower Classification Project")
-# Image url
-url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQF2roQNP1rPFtklA8xgZt76jyhj6x2BUjVe6gxwxJ53pI0_TYfQLRZh8oZ&s=10"
-st.image(url)
 
-# Show Dataframe sample
-st.dataframe(df.sample(5))
 
-# LEFT SIDE BAR for USER VALUE INPUT
-st.sidebar.title("Select Iris Features")
-st.sidebar.image(url)
 
-user_input = []
-for i in X:
-    min_i = X[i].min()
-    max_i = X[i].max()
-    ans = float(st.sidebar.slider(f"Select value of {i}:", min_value = min_i, max_value = max_i))
 
-    user_input.append(ans)
 
-# USER INPUT SHOW
-st.markdown("""
-<h2> User Input Value</h2>
-""",unsafe_allow_html=True)
-st.write(user_input)
-
-# MODEL PREDICTION
-counter = 0
-for model in all_models:
-    ans = model.predict([user_input])[0]
-    class_ans = classes[ans]
-    st.write(f"Prediction by: {all_model_name[counter]}===>{class_ans}")
-    counter += 1
-    
-    
